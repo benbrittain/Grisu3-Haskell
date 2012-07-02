@@ -5,7 +5,7 @@ import Data.Maybe
 import Debug.Trace
 
 
-grisu3 input    = (buffer, (kappa + (-1*mk)))
+grisu3 input    = generateString buffer (kappa + (-1*mk))
     where   v               =   createDiyFp (fst $ decodeFloat(input)) (fromIntegral (snd $ decodeFloat(input)))
             w               =   normalize v
             boundryPlus     =   normalize $ createDiyFp (((f v) `shiftL` 1) + 1) ((e v) -1) 
@@ -29,7 +29,9 @@ grisu3 input    = (buffer, (kappa + (-1*mk)))
             kMinimalTargetExp  =   (-60)
             kMaximalTargetExp  =   (-32)
             
+generateString (Just (x:xs)) decimalPoint  = (foldl (\acc x -> acc ++ (show x)) ((show x) ++ ".") xs) ++ "e"++ (show decimalPoint)
             
+getCachedPower  :: (Num a1, Ord a1, RealFrac a) => a -> a1 -> (DiyFp, Int)
 getCachedPower min_exponent max_exponent = (cachedPower, decimalExponent)
     where   kQ  = 64
             kD_1_LOG2_10 = 0.30102999566398114
@@ -48,7 +50,7 @@ normalize v
             | (f v) .&. (2^63) == 0      = normalize (createDiyFp ((f v) `shiftL` 1) ((e v) - 1))
             | otherwise                  = v
 
---digitGen :: (DiyFp, DiyFp, DiyFp) -> [Integer]
+digitGen :: DiyFp -> DiyFp -> DiyFp -> (Maybe [Integer], Int)
 digitGen low fp high        = (buffer, kappa)
     where   too_low         = createDiyFp ((f low) - unit) (e low)
             too_high        = createDiyFp ((f high) + unit) (e high)
@@ -61,31 +63,23 @@ digitGen low fp high        = (buffer, kappa)
             rest            = (integrals `shiftL` shift) + fractional
             (divisor,divExp)= biggestPowerTen integrals (kSignificandSize - shift)
             length          = 0
-            (buffer,kappa)          = findInvariant (divExp + 1) "" length integrals divisor fractional (too_high - too_low) unit shift too_high fp one 
+            (buffer,kappa)          = findInvariant (divExp + 1) [] length integrals divisor fractional (too_high - too_low) unit shift too_high fp one 
             assert          =(e low == e fp) && (e fp == e high) && (f low + 1 <= f high -1) && ((-60) <= e fp) && (e fp <= (-32))
---            pointless       = calcInvariant kappa "" integrals divisor fractional shift too_high fp unsafe_int one 0 1
 
 findInvariant kappa buffer length integrals divisor fractional unsafe unit shift too_high w one
     |   (kappa > 0) =   if ((integrals `shiftL` shift) + fractional) < f unsafe
-                        then  (roundWeed (buffer ++ show (integrals `div` divisor)) (length + 1) (f (too_high - w)) (f unsafe) (((integrals `mod` divisor) `shiftL` shift) + fractional) (divisor `shiftL` shift) unit,kappa -1)
-                        else findInvariant (kappa - 1) (buffer ++ show (integrals `div` divisor)) (length + 1) (integrals `mod` divisor) (divisor `div` 10) fractional unsafe unit shift too_high w one
+                        then  (roundWeed (buffer ++ [(integrals `div` divisor)]) (length + 1) (f (too_high - w)) (f unsafe) (((integrals `mod` divisor) `shiftL` shift) + fractional) (divisor `shiftL` shift) unit, kappa - 1 + length)
+                        else findInvariant (kappa - 1) (buffer ++  [(integrals `div` divisor)]) (length + 1) (integrals `mod` divisor) (divisor `div` 10) fractional unsafe unit shift too_high w one
     |   otherwise   =   if (((fractional*10) .&. ((f one) - 1))) < ((f unsafe)*10)
-                        then (roundWeed (buffer ++ show ((fractional * 10) `shiftR` shift)) (length + 1) ((f (too_high - w)) * (unit*10)) ((f unsafe)*10) ((fractional*10) .&. ((f one) - 1)) (f one) (unit*10), kappa -1)
-                        else findInvariant (kappa - 1) (buffer ++ show ((fractional * 10) `shiftR` shift)) (length + 1) (integrals) (divisor) ((fractional*10) .&. ((f one) - 1)) (createDiyFp (f unsafe *10) (e unsafe)) (unit*10) shift too_high w one
+                        then (roundWeed (buffer ++ [((fractional * 10) `shiftR` shift)]) (length + 1) ((f (too_high - w)) * (unit*10)) ((f unsafe)*10) ((fractional*10) .&. ((f one) - 1)) (f one) (unit*10), kappa - 1 + length)
+                        else findInvariant (kappa - 1) (buffer ++ [((fractional * 10) `shiftR` shift)]) (length + 1) (integrals) (divisor) ((fractional*10) .&. ((f one) - 1)) (createDiyFp (f unsafe *10) (e unsafe)) (unit*10) shift too_high w one
     where hiddenAssert  =   ((e one) >= (-60)) && (fractional < (f one)) && ( (0xFFFFFFFFFFFFFFFF `div` 10) >= f one)
 
 
---
---kappaLoop kappa buffer length integrals divisor fractional unsafe unit shift too_high w one
---    | (kappa > 0) && ((((integrals `mod` divisor) `shiftL` shift) + fractional) < f unsafe)  = trace ("RW & buffer: " ++ show buffer) ((kappa -1 + length), roundWeed (buffer ++ show (integrals `div` divisor)) (length + 1) (f (too_high - w)) (f unsafe) (((integrals `mod` divisor) `shiftL` shift) + fractional) (divisor `shiftL` shift) unit)
---    | (kappa > 0) = trace ("buffer: " ++ show buffer) kappaLoop (kappa - 1) (buffer ++ show (integrals `div` divisor)) (length + 1) (integrals `mod` divisor) (divisor `div` 10) fractional unsafe unit shift too_high w one
---    | otherwise =   if ((fractional*10) .&. ((f one) - 1))  < (f unsafe)
---                    then trace ("RW & buffer: " ++ show buffer) ((kappa - 1 + length), roundWeed (buffer ++ show ((fractional * 10) `shiftR` shift)) (length + 1) ((f (too_high - w)) * (unit*10)) ((f unsafe)*10) ((fractional*10) .&. ((f one) - 1)) (f one) (unit*10))
---                    else trace ("buffer: " ++ show buffer) kappaLoop (kappa - 1)  (buffer ++ show ((fractional * 10) `shiftR` shift)) (length + 1) (integrals) (divisor) ((fractional*10) .&. ((f one) - 1)) (createDiyFp (f unsafe *10) (e unsafe)) (unit*10) shift too_high w one
-    --hidden assert ((e one) >= (-60)) && (fractional < (f one)) && ( (0xFFFFFFFFFFFFFFFF `div` 10) >= f one)
 
 smallPowerTen = map (10^) [0..9]
---
+
+
 biggestPowerTen number number_bits = (power,finExp)
     where   assert = (number < (1 `shiftL` (number_bits + 1)))
             exponentPlusOne = (((number_bits + 1) * 1223) `shiftR` 12) + 1
@@ -94,18 +88,10 @@ biggestPowerTen number number_bits = (power,finExp)
                         then exponentPlusOne - 1
                         else exponentPlusOne
 
---calcInvariant kappa buffer integrals divider fractional shift too_high fp unsafe one length unit
---    | (kappa > 0) && (rest < (f unsafe))    = trace ("roundWeed! " ) roundWeed (buffer ++ (show digit)) (length+1) (f (too_high - fp)) (f unsafe) rest (divider `shiftL` shift) unit
---    | (kappa > 0)                           = trace ("kappa " ++ show kappa) calcInvariant (kappa - 1) (buffer ++ (show digit)) (integrals `mod` divider) (divider `div` 10) fractional shift too_high fp unsafe one (length + 1) unit
---    | (((fractional * 5) .&. ((f one `shiftR` 1) - 1)) < (f unsafe * 5)) = trace ("roundWeed 2! ") roundWeed (buffer ++ show ((fractional*5) `shiftR` shift)) (length + 1) ((f (too_high - fp))*unit) (f unsafe * 5) (fractional * 5) (f one `shiftR` 1) (unit*5)
---    | otherwise                             = trace ("otherwise") calcInvariant (kappa - 1) (buffer ++ show ((fractional*5) `shiftR` shift)) integrals divider ((fractional * 5) .&. (f one `shiftR` 1) - 1) shift too_high fp (createDiyFp (f unsafe * 4) (e unsafe + 1)) (createDiyFp (f one `shiftR` 1) (e one + 1)) (length + 1) (unit * 5)
---        where   rest = ((integrals `mod` divider) `shiftL` shift) + fractional
---                digit = integrals `div` divider
---
 kSignificandSize = 64
 
 roundWeed buffer length distanceHigh unsafe rest tenkappa unit
-    | ((rest < smallDistance) && (unsafe - rest >= tenkappa)) && (((rest + tenkappa) < smallDistance) || (smallDistance - rest >= rest + tenkappa - smallDistance)) =  roundWeed (init buffer ++ [pred (last buffer)]) length distanceHigh unsafe (rest + tenkappa) tenkappa unit
+    | ((rest < smallDistance) && (unsafe - rest >= tenkappa)) && (((rest + tenkappa) < smallDistance) || (smallDistance - rest >= rest + tenkappa - smallDistance)) =  roundWeed (init buffer ++ [(last buffer)-1]) length distanceHigh unsafe (rest + tenkappa) tenkappa unit
     | otherwise =   if  ((rest < bigDistance) && (unsafe - rest) >= tenkappa) && ((rest + tenkappa < bigDistance) || (bigDistance - rest) > (rest + tenkappa - bigDistance))
                     then Nothing
                     else    if ((2 * unit) <= rest) && (rest <= unsafe - (4 * unit))
