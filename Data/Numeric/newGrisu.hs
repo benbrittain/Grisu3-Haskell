@@ -1,5 +1,4 @@
 import Data.Bits
---import CachedPowers
 import GHC.Int
 import Data.Maybe
 import Debug.Trace
@@ -29,8 +28,12 @@ grisu3 input    = generateString buffer (kappa + (-1*mk))
             kMinimalTargetExp  =   (-60)
             kMaximalTargetExp  =   (-32)
             
-generateString (Just (x:xs)) decimalPoint  = (foldl (\acc x -> acc ++ (show x)) ((show x) ++ ".") xs) ++ "e"++ (show decimalPoint)
-            
+generateString (Just buffer@(x:xs)) decimalPoint
+    | decimalPoint == (-1)                      = (foldl (\acc x -> acc ++ (show x)) ("0" ++ ".") buffer)
+    | decimalPoint < (-1) || (decimalPoint > 6) = (foldl (\acc x -> acc ++ (show x)) ((show x) ++ ".") xs) ++ "e"++ (show decimalPoint)
+    | otherwise                                 = (convert $ (fst $ splitAt (decimalPoint+1) buffer)) ++ "." ++ (convert $ (snd $ splitAt (decimalPoint+1) buffer))
+        where convert d  =   (foldl (\acc x -> acc ++ (show x)) ("") d)
+
 getCachedPower  :: (Num a1, Ord a1, RealFrac a) => a -> a1 -> (DiyFp, Int)
 getCachedPower min_exponent max_exponent = (cachedPower, decimalExponent)
     where   kQ  = 64
@@ -100,21 +103,29 @@ roundWeed buffer length distanceHigh unsafe rest tenkappa unit
     where smallDistance = distanceHigh - unit 
           bigDistance = distanceHigh + unit 
 
-powerTen :: (Num a, Num t1, Num t2, Ord a) => t -> a -> (t1, t2)
-powerTen number bits
-    | (bits >= 30 && bits <= 32) = (1000000000,9)
-    | bits >= 27 = (100000000,8)
-    | bits >= 24 = (10000000,7)
-    | bits >= 20 = (1000000,6)
-    | bits >= 17 = (100000,5)
-    | bits >= 14 = (10000,4)
-    | bits >= 10 = (1000,3)
-    | bits >= 7  = (100,2)
-    | bits >= 4  = (10,1)
-    | bits >= 1  = (1,0)
-    | bits == 0  = (0,(-1))
-    | otherwise  = (0,0)
+--powerTen :: (Num a, Num t1, Num t2, Ord a) => t -> a -> (t1, t2)
+--powerTen number bits
+--    | (bits >= 30 && bits <= 32) = (1000000000,9)
+--    | bits >= 27 = (100000000,8)
+--    | bits >= 24 = (10000000,7)
+--    | bits >= 20 = (1000000,6)
+--    | bits >= 17 = (100000,5)
+--    | bits >= 14 = (10000,4)
+--    | bits >= 10 = (1000,3)
+--    | bits >= 7  = (100,2)
+--    | bits >= 4  = (10,1)
+--    | bits >= 1  = (1,0)
+--    | bits == 0  = (0,(-1))
+--    | otherwise  = (0,0)
 
+
+createDiyFp :: Integer -> Int16 -> DiyFp
+createDiyFp x y = DiyFp x y
+
+data DiyFp = DiyFp  { f :: Integer
+                    , e :: Int16
+                    }
+    deriving(Show)
 
 instance Num DiyFp where
     (+)     x y = addDiyFp x y
@@ -133,14 +144,6 @@ mulDiyFp   x y = result
                         newF = (a*c) + ((a*d) `shiftR` 32) + ((b*c) `shiftR` 32) + (tmp `shiftR` 32)
                         newE  = ((e x) + (e y) + 64) 
                         result = createDiyFp newF newE
-
-createDiyFp :: Integer -> Int16 -> DiyFp
-createDiyFp x y = DiyFp x y
-
-data DiyFp = DiyFp  { f :: Integer
-                    , e :: Int16
-                    }
-    deriving(Show)
 
 
 firstPowerOfTen = -348
