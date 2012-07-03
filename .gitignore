@@ -5,3 +5,6 @@
 #the testing files
 Data/Numeric/test.hs
 Data/Numeric/new.hs
+
+#Haskell virthualenv
+.virthualenv/*
